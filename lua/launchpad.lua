@@ -1,7 +1,5 @@
 local M = {}
-local Menu = require("nui.menu")
-local Popup = require("nui.popup")
-local event = require("nui.utils.autocmd").event
+local component = require("nui-components")
 local util = require("launchpad.util")
 
 --- @type table<string, ConfigEntity[]>
@@ -39,7 +37,7 @@ function M.save_configs()
 	util.write_json_file(save_path, serialized)
 end
 
-local function _add_config(type, config)
+local function add_config(type, config)
 	if not type_to_cfg_entities[type] then
 		type_to_cfg_entities[type] = {}
 	end
@@ -47,145 +45,178 @@ local function _add_config(type, config)
 end
 
 function M.create_config(type)
-	local on_created = function(config)
+	local function on_created(config)
 		vim.notify("Created: " .. config.name, vim.log.levels.INFO)
-		_add_config(type, config)
+		add_config(type, config)
 		M.save_configs()
 	end
-	get_module(type).create(on_created)
+	vim.schedule(function()
+		get_module(type).create(on_created)
+	end)
 end
 
-local function _on_select(config)
-	vim.notify("Selected: " .. config.name, vim.log.levels.INFO)
-	config:run()
-	M.save_configs()
+local function update_entity(entity)
+	for _, entities in pairs(type_to_cfg_entities) do
+		for _, e in ipairs(entities) do
+			if e.id == entity.id then
+				e.config = entity.config
+				break
+			end
+		end
+	end
 end
 
-local function _on_modify(config)
-	vim.notify("Modified: " .. config.name, vim.log.levels.INFO)
-	M.save_configs()
+local function on_select(entity)
+	vim.notify("Selected: " .. entity.config.name, vim.log.levels.INFO)
+	vim.schedule(function()
+		entity.config:run()
+		update_entity(entity)
+		M.save_configs()
+	end)
+end
+
+local function on_modify(entity)
+	vim.notify("Modified: " .. entity.config.name, vim.log.levels.INFO)
+	vim.schedule(function()
+		update_entity(entity)
+		M.save_configs()
+	end)
 end
 
 function M.show_configs(type)
-	local target_entities = type_to_cfg_entities[type]
-	if not target_entities then
+	local entities = type_to_cfg_entities[type]
+	if not entities or #entities == 0 then
 		vim.notify("No configs found for type: " .. type, vim.log.levels.WARN)
 		return
 	end
 
 	local items = {}
-	for _, entity in ipairs(target_entities) do
-		table.insert(
-			items,
-			Menu.item(entity.config.name, {
-				entity = entity,
-			})
-		)
+	for _, entity in ipairs(entities) do
+		table.insert(items, component.option(entity.config.name, entity))
 	end
 
 	table.sort(items, function(a, b)
-		return a.entity.config:sort_key() > b.entity.config:sort_key()
+		return a.config:sort_key() > b.config:sort_key()
 	end)
 
-	local menu = Menu({
-		position = "50%",
-		relative = "editor",
-		size = {
-			width = 25,
-			height = 5,
-		},
-		border = {
-			style = "single",
-			text = {
-				top = "[" .. type .. " configurations] ",
-				top_align = "center",
-			},
-		},
-		win_options = {
-			winhighlight = "Normal:Normal,FloatBorder:Normal",
-		},
-	}, {
-		lines = items,
-		max_width = 20,
-		keymap = {
-			focus_next = { "j", "<Down>", "<Tab>" },
-			focus_prev = { "k", "<Up>" },
-			close = { "q", "<Esc>" },
-			submit = { "<CR>" },
-		},
-		on_submit = function(item)
-			_on_select(item.entity.config)
-		end,
+	local renderer = component.create_renderer({
+		width = 80,
+		height = 40,
 	})
 
-	menu:map("n", "r", function()
-		local curr_linenr = vim.api.nvim_win_get_cursor(menu.winid)[1]
-		local item = items[curr_linenr]
-		menu:unmount()
+	local selected_signal = component.create_signal({
+		selected = items[1],
+	})
 
-		item.entity.config:modify(function(config)
-			_on_modify(config)
+	local detail_buf = vim.api.nvim_create_buf(false, true)
+	local detail = items[1].config:detail()
+	vim.api.nvim_buf_set_lines(detail_buf, 0, -1, false, detail)
+
+	local scroll_detail_buf = function(direction)
+		local winid = renderer:get_component_by_id("detail").winid
+		local input = direction < 0 and [[]] or [[]]
+		local count = math.abs(direction)
+
+		vim.api.nvim_win_call(winid, function()
+			vim.cmd([[normal! ]] .. count .. input)
 		end)
-	end)
+	end
 
-	menu:map("n", "d", function()
-		local curr_linenr = vim.api.nvim_win_get_cursor(menu.winid)[1]
-		local item = items[curr_linenr]
-		local delete_target_idx = -1
-		for idx, entity in ipairs(target_entities) do
-			if entity.id == item.entity.id then
-				delete_target_idx = idx
-				break
-			end
-		end
-		if delete_target_idx == -1 then
-			vim.notify("Config not found", vim.log.levels.ERROR)
-			return
-		end
-		menu:unmount()
-		table.remove(target_entities, delete_target_idx)
-		vim.notify("Deleted: " .. item.entity.config.name, vim.log.levels.INFO)
-		M.save_configs()
-	end)
-
-	menu:map("n", "K", function()
-		local curr_linenr = vim.api.nvim_win_get_cursor(menu.winid)[1]
-		local item = items[curr_linenr]
-		local detail = item.entity.config:detail()
-
-		local popup = Popup({
-			enter = false,
-			focusable = false,
-			border = {
-				style = "rounded",
-				text = {
-					top = " Profile Details ",
-					top_align = "center",
-				},
-			},
-			position = {
-				row = 0,
-				col = 25 + 2,
-			},
-			size = {
-				width = 60,
-				height = 10,
-			},
-		})
-
-		vim.api.nvim_buf_set_lines(popup.bufnr, 0, -1, false, detail)
-
-		popup:mount()
-
-		menu:on(event.BufLeave, function()
-			popup:unmount()
-		end)
-		menu:on(event.CursorMoved, function()
-			popup:unmount()
-		end)
-	end)
-
-	menu:mount()
+	local body = function()
+		return component.columns(component.rows(
+			component.select({
+				flex = 2,
+				autofocus = true,
+				border_label = "Select a " .. type .. " configuration",
+				data = items,
+				selected = selected_signal.selected,
+				multiselect = false,
+				on_select = function(entity)
+					on_select(entity)
+					renderer:close()
+				end,
+				on_change = function(entity)
+					selected_signal.selected = entity
+					vim.api.nvim_buf_set_lines(detail_buf, 0, -1, false, entity.config:detail())
+				end,
+			}),
+			component.paragraph({
+				lines = "<d>: Delete an item. <r>: Modify an item. <Esc> or <q>: Close the menu.",
+				align = "right",
+				is_focusable = false,
+			}),
+			component.buffer({
+				id = "detail",
+				flex = 1,
+				buf = detail_buf,
+				border_label = "Detail",
+				is_focusable = false,
+			}),
+			component.paragraph({
+				lines = "<C-d>: Scroll down. <C-u>: Scroll up.",
+				align = "right",
+				is_focusable = false,
+			})
+		))
+	end
+	renderer:add_mappings({
+		{
+			mode = { "n", "v" },
+			key = "q",
+			handler = function()
+				renderer:close()
+			end,
+		},
+		{
+			mode = { "n", "v" },
+			key = "<C-d>",
+			handler = function()
+				scroll_detail_buf(1)
+			end,
+		},
+		{
+			mode = { "n", "v" },
+			key = "<C-u>",
+			handler = function()
+				scroll_detail_buf(-1)
+			end,
+		},
+		{
+			mode = { "n", "v" },
+			key = "d",
+			handler = function()
+				local target_entity = selected_signal.selected:get_value()
+				local delete_target_idx = -1
+				for idx, entity in ipairs(entities) do
+					if entity.id == target_entity.id then
+						delete_target_idx = idx
+						break
+					end
+				end
+				if delete_target_idx == -1 then
+					vim.notify("Config not found", vim.log.levels.ERROR)
+					return
+				end
+				table.remove(entities, delete_target_idx)
+				vim.notify("Deleted: " .. target_entity.config.name, vim.log.levels.INFO)
+				renderer:close()
+				M.save_configs()
+			end,
+		},
+		{
+			mode = { "n", "v" },
+			key = "r",
+			handler = function()
+				renderer:close()
+				local entity = selected_signal.selected:get_value()
+				entity.config:modify(function(config)
+					entity.config = config
+					on_modify(entity)
+				end)
+			end,
+		},
+	})
+	renderer:render(body)
 end
 
 function M.setup(opts)
