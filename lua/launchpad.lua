@@ -192,7 +192,7 @@ function M.setup(opts)
 	local defaults = {
 		save_file = ".launchpad.json",
 		save_dir = vim.fn.getcwd(),
-		types = { "run" },
+		types = { "run", "debug" },
 	}
 	options = vim.tbl_extend("force", defaults, opts or {})
 

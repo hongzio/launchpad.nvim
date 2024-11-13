@@ -78,4 +78,61 @@ function M.uuid()
 	end)
 end
 
+local function is_array(t)
+	local i = 0
+	for _ in pairs(t) do
+		i = i + 1
+		if t[i] == nil then
+			return false
+		end
+	end
+	return true
+end
+
+local indent_unit = 2
+--- @param obj any @Object to beautify
+--- @param indent number @Indentation level
+--- @return string @Beautified JSON
+local function beautify_json_object(obj, indent)
+	if type(obj) == "table" then
+		if is_array(obj) then
+			local ret = "[\n"
+			local lines = {}
+			for _, v in ipairs(obj) do
+				lines[#lines + 1] = string.rep(" ", indent + indent_unit)
+					.. beautify_json_object(v, indent + indent_unit)
+			end
+			ret = ret .. table.concat(lines, ",\n") .. "\n"
+			return ret .. string.rep(" ", indent) .. "]"
+		else
+			local ret = "{\n"
+			local lines = {}
+			for k, v in pairs(obj) do
+				lines[#lines + 1] = string.rep(" ", indent + indent_unit)
+					.. '"'
+					.. k
+					.. '": '
+					.. beautify_json_object(v, indent + indent_unit)
+			end
+			ret = ret .. table.concat(lines, ",\n") .. "\n"
+			return ret .. string.rep(" ", indent) .. "}"
+		end
+	elseif type(obj) == "string" then
+		return '"' .. obj .. '"'
+	elseif type(obj) == "number" then
+		return tostring(obj)
+	elseif type(obj) == "boolean" then
+		return tostring(obj)
+	else
+		return tostring(obj)
+	end
+end
+
+--- @param str string @Json string
+--- @return string @Beautified JSON
+function M.beautify_json(str)
+	local obj = vim.fn.json_decode(str)
+	return beautify_json_object(obj, 0)
+end
+
 return M
