@@ -6,10 +6,29 @@ local util = require("launchpad.util")
 local type_to_cfg_entities = {}
 
 --- @type Options
-local options
+local options = {
+	save_file = ".launchpad.json",
+	save_dir = vim.fn.getcwd(),
+	types = { "run", "debug" },
+}
 
 local function get_module(type)
 	return require("launchpad.config." .. type)
+end
+
+function M.setup(opts)
+	options = vim.tbl_extend("force", options, opts or {})
+
+	for _, type in ipairs(options.types) do
+		if pcall(require, "launchpad.config." .. type) then
+			local type_opts = options["opts"] and options["opts"][type] or {}
+			get_module(type).setup(type_opts)
+		else
+			vim.notify("No config found for type: " .. type, vim.log.levels.WARN)
+		end
+	end
+
+	M.load_configs()
 end
 
 function M.load_configs()
@@ -217,26 +236,6 @@ function M.show_configs(type)
 		},
 	})
 	renderer:render(body)
-end
-
-function M.setup(opts)
-	local defaults = {
-		save_file = ".launchpad.json",
-		save_dir = vim.fn.getcwd(),
-		types = { "run", "debug" },
-	}
-	options = vim.tbl_extend("force", defaults, opts or {})
-
-	for _, type in ipairs(options.types) do
-		if pcall(require, "launchpad.config." .. type) then
-			local type_opts = options["opts"] and options["opts"][type] or {}
-			get_module(type).setup(type_opts)
-		else
-			vim.notify("No config found for type: " .. type, vim.log.levels.WARN)
-		end
-	end
-
-	M.load_configs()
 end
 
 return M
