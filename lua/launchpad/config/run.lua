@@ -105,6 +105,11 @@ function RunConfig:_form(on_submitted)
 					self.cmd = value
 				end,
 			}),
+			component.paragraph({
+				lines = "{{file}}: current file path",
+				align = "right",
+				is_focusable = false,
+			}),
 			component.text_input({
 				size = 1,
 				autoresize = true,
@@ -129,6 +134,11 @@ function RunConfig:_form(on_submitted)
 				on_change = function(value)
 					self.env_file = value
 				end,
+			}),
+			component.paragraph({
+				lines = "Use <Tab> and <S-Tab> to navigate fields, <C-s> to save",
+				align = "right",
+				is_focusable = false,
 			})
 		)
 	end
