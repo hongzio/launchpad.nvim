@@ -48,11 +48,23 @@ function M.deserialize(str)
 	return config
 end
 
+local variable_resolvers = {
+	["{{file}}"] = function(_)
+		return vim.fn.expand("%:p")
+	end,
+}
+
 function RunConfig:_form(on_submitted)
 	local renderer = component.create_renderer({
 		width = 80,
 		height = 40,
 	})
+
+	-- Functions like vim.fn.expand("%:p") are not working correctly inside the form
+	local resolved_variables = {}
+	for var, resolver in pairs(variable_resolvers) do
+		resolved_variables[var] = resolver()
+	end
 
 	local body = function()
 		return component.form(
@@ -63,6 +75,9 @@ function RunConfig:_form(on_submitted)
 					if not is_valid then
 						vim.notify("Invalid form", vim.log.levels.ERROR)
 						return
+					end
+					for var, resolved in pairs(resolved_variables) do
+						self.cmd = string.gsub(self.cmd, var, resolved)
 					end
 					renderer:close()
 					on_submitted(self)
