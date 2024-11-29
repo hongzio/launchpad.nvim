@@ -94,14 +94,6 @@ local function on_select(entity)
 	end)
 end
 
-local function on_modify(entity)
-	vim.notify("Modified: " .. entity.config.name, vim.log.levels.INFO)
-	vim.schedule(function()
-		update_entity(entity)
-		M.save_configs()
-	end)
-end
-
 function M.show_configs(type)
 	local entities = type_to_cfg_entities[type]
 	if not entities or #entities == 0 then
@@ -219,6 +211,7 @@ function M.show_configs(type)
 				table.remove(entities, delete_target_idx)
 				vim.notify("Deleted: " .. target_entity.config.name, vim.log.levels.INFO)
 				renderer:close()
+				M.show_configs(type)
 				M.save_configs()
 			end,
 		},
@@ -229,8 +222,15 @@ function M.show_configs(type)
 				renderer:close()
 				local entity = selected_signal.selected:get_value()
 				entity.config:modify(function(config)
+					if config == nil then
+						M.show_configs(type)
+						return
+					end
 					entity.config = config
-					on_modify(entity)
+					update_entity(entity)
+					M.show_configs(type)
+					vim.notify("Modified: " .. entity.config.name, vim.log.levels.INFO)
+					M.save_configs()
 				end)
 			end,
 		},

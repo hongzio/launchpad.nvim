@@ -1,7 +1,7 @@
 ---@class Config
 ---@field name string
 ---@field serialize fun(self): string
----@field modify fun(self): nil
+---@field modify fun(self, callback): nil
 ---@field sortkey fun(self): number
 ---@field detail fun(self): string
 ---@field run fun(self): nil

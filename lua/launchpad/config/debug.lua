@@ -25,12 +25,22 @@ function DebugConfig:serialize()
 	return ret
 end
 
---- @param on_modified fun(config: Config): nil
-function DebugConfig:modify(on_modified)
+--- @param callback fun(config: Config | nil): nil
+function DebugConfig:modify(callback)
 	local renderer = component.create_renderer({
 		width = 80,
 		height = 40,
 	})
+
+	local is_submitted = false
+
+	renderer:on_unmount(function()
+		if not is_submitted then
+			callback(nil)
+		else
+			callback(self)
+		end
+	end)
 
 	local body = function()
 		return component.form(
@@ -42,8 +52,8 @@ function DebugConfig:modify(on_modified)
 						vim.notify("Invalid form", vim.log.levels.ERROR)
 						return
 					end
+					is_submitted = true
 					renderer:close()
-					on_modified(self)
 				end,
 			},
 			component.text_input({

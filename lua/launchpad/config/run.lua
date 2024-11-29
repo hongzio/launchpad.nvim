@@ -54,7 +54,7 @@ local variable_resolvers = {
 	end,
 }
 
-function RunConfig:_form(on_submitted)
+function RunConfig:_form(callback)
 	local renderer = component.create_renderer({
 		width = 80,
 		height = 40,
@@ -65,6 +65,15 @@ function RunConfig:_form(on_submitted)
 	for var, resolver in pairs(variable_resolvers) do
 		resolved_variables[var] = resolver()
 	end
+	local is_submitted = false
+
+	renderer:on_unmount(function()
+		if not is_submitted then
+			callback(nil)
+		else
+			callback(self)
+		end
+	end)
 
 	local body = function()
 		return component.form(
@@ -79,8 +88,8 @@ function RunConfig:_form(on_submitted)
 					for var, resolved in pairs(resolved_variables) do
 						self.cmd = string.gsub(self.cmd, var, resolved)
 					end
+					is_submitted = true
 					renderer:close()
-					on_submitted(self)
 				end,
 			},
 			component.text_input({
