@@ -93,8 +93,8 @@ function DebugConfig:modify(callback)
 end
 
 function DebugConfig:hash_key()
-  local hash = vim.fn.sha256(vim.fn.json_encode(self.dap_config))
-  return hash
+	local hash = vim.fn.sha256(vim.fn.json_encode(self.dap_config))
+	return hash
 end
 
 function DebugConfig:sort_key()
@@ -113,13 +113,6 @@ function DebugConfig:detail()
 	end
 
 	return lines
-end
-
-local is_debug_config_running = false
-function DebugConfig:run()
-	self.last_run_time = os.time()
-	is_debug_config_running = true
-	require("dap").run(self.dap_config)
 end
 
 -- https://github.com/mfussenegger/nvim-dap/blob/master/doc/dap.txt#L309
@@ -158,7 +151,27 @@ local variable_resolvers = {
 
 local new_debug_config = nil
 
-local options = {}
+local options = {
+	hooks = {
+		pre_create = {
+			python = "launchpad.config.debug.python",
+		},
+		pre_run = {
+			python = "launchpad.config.debug.python",
+		},
+	},
+}
+
+local is_debug_config_running = false
+function DebugConfig:run()
+	self.last_run_time = os.time()
+	is_debug_config_running = true
+	local debug_config = self
+	pcall(function()
+		debug_config = require(options.hooks.pre_run[self.dap_config["type"]]).pre_run(debug_config)
+	end)
+	require("dap").run(debug_config.dap_config)
+end
 
 --- @type Module
 local M = {
@@ -174,25 +187,30 @@ local M = {
 				is_debug_config_running = false
 				return dap_config
 			end
-			local sanitized_config = vim.deepcopy(dap_config)
+			local resolved_config = vim.deepcopy(dap_config)
 			for k, v in pairs(dap_config) do
 				if type(v) == "function" then
-					sanitized_config[k] = v()
+					resolved_config[k] = v()
 				end
 			end
-			for k, v in pairs(sanitized_config) do
+			for k, v in pairs(resolved_config) do
 				if type(v) == "string" then
 					for var, resolver in pairs(variable_resolvers) do
-						sanitized_config[k] = string.gsub(sanitized_config[k], var, resolver)
+						resolved_config[k] = string.gsub(resolved_config[k], var, resolver)
 					end
 				end
 			end
 
 			local buf_path = vim.api.nvim_buf_get_name(0)
 			local file_name = vim.fn.fnamemodify(buf_path, ":t")
-			new_debug_config = DebugConfig.new({ name = file_name, dap_config = sanitized_config })
+			new_debug_config = DebugConfig.new({ name = file_name, dap_config = resolved_config })
+
+			local dap_type = resolved_config["type"]
+			pcall(function()
+				new_debug_config = require(options.hooks.pre_create[dap_type]).pre_create(new_debug_config)
+			end)
 			require("launchpad").create_config("debug")
-			return sanitized_config
+			return resolved_config
 		end
 	end,
 	deserialize = function(str)
