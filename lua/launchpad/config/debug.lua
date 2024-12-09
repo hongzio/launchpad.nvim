@@ -92,6 +92,11 @@ function DebugConfig:modify(callback)
 	renderer:render(body)
 end
 
+function DebugConfig:hash_key()
+  local hash = vim.fn.sha256(vim.fn.json_encode(self.dap_config))
+  return hash
+end
+
 function DebugConfig:sort_key()
 	return self.last_run_time
 end

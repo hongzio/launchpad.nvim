@@ -210,6 +210,11 @@ function RunConfig:run()
 	self.last_run_time = os.time()
 end
 
+function RunConfig:hash_key()
+	local hash = vim.fn.sha256(self.cmd .. self.env_file .. vim.inspect(self.env_vars))
+	return hash
+end
+
 function RunConfig:sort_key()
 	return self.last_run_time
 end

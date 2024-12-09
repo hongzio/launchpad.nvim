@@ -16,6 +16,12 @@ local function get_module(type)
 	return require("launchpad.config." .. type)
 end
 
+--- @param config Config
+--- @return ConfigEntity
+local function create_entity(config)
+	return { id = util.uuid(), config = config, hash = config:hash_key() }
+end
+
 function M.setup(opts)
 	options = vim.tbl_extend("force", options, opts or {})
 
@@ -38,7 +44,7 @@ function M.load_configs()
 	for type, serialized_list in pairs(type_to_serialized_list) do
 		deserialized[type] = {}
 		for _, serialized in ipairs(serialized_list) do
-			table.insert(deserialized[type], { id = util.uuid(), config = get_module(type).deserialize(serialized) })
+			table.insert(deserialized[type], create_entity(get_module(type).deserialize(serialized)))
 		end
 	end
 	type_to_cfg_entities = deserialized
@@ -60,11 +66,29 @@ local function add_config(type, config)
 	if not type_to_cfg_entities[type] then
 		type_to_cfg_entities[type] = {}
 	end
-	table.insert(type_to_cfg_entities[type], { id = util.uuid(), config = config })
+	table.insert(type_to_cfg_entities[type], create_entity(config))
+end
+
+local function is_duplicated(type, config)
+	local new_config_hash = config:hash_key()
+	local entities = type_to_cfg_entities[type]
+	if entities then
+		for _, entity in pairs(entities) do
+			if entity.config:hash_key() == new_config_hash then
+				return true
+			end
+		end
+	end
+	return false
 end
 
 function M.create_config(type)
+	--- @param config Config
 	local function on_created(config)
+		if is_duplicated(type, config) then
+			vim.notify("Config already exists", vim.log.levels.INFO)
+			return
+		end
 		vim.notify("Created: " .. config.name, vim.log.levels.INFO)
 		add_config(type, config)
 		M.save_configs()
