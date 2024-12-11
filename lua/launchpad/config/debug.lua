@@ -149,6 +149,26 @@ local variable_resolvers = {
 	end,
 }
 
+--- resolve_config resolves variables in dap configuration. Function varaibles and string placeholders are resolved.
+--- @param dap_config dap.Configuration
+--- @return dap.Configuration
+local function resolve_config(dap_config)
+	local resolved_config = vim.deepcopy(dap_config)
+	for k, v in pairs(dap_config) do
+		if type(v) == "function" then
+			resolved_config[k] = v()
+		end
+	end
+	for k, v in pairs(resolved_config) do
+		if type(v) == "string" then
+			for var, resolver in pairs(variable_resolvers) do
+				resolved_config[k] = string.gsub(resolved_config[k], var, resolver)
+			end
+		end
+	end
+	return resolved_config
+end
+
 local new_debug_config = nil
 
 local options = {
@@ -183,23 +203,11 @@ local M = {
 			return
 		end
 		dap.listeners.on_config["launchpad"] = function(dap_config)
-			if is_debug_config_running then
+			if is_debug_config_running then -- don't create new config if debug session is created by launchpad
 				is_debug_config_running = false
 				return dap_config
 			end
-			local resolved_config = vim.deepcopy(dap_config)
-			for k, v in pairs(dap_config) do
-				if type(v) == "function" then
-					resolved_config[k] = v()
-				end
-			end
-			for k, v in pairs(resolved_config) do
-				if type(v) == "string" then
-					for var, resolver in pairs(variable_resolvers) do
-						resolved_config[k] = string.gsub(resolved_config[k], var, resolver)
-					end
-				end
-			end
+			local resolved_config = resolve_config(dap_config)
 
 			local buf_path = vim.api.nvim_buf_get_name(0)
 			local file_name = vim.fn.fnamemodify(buf_path, ":t")
