@@ -23,6 +23,14 @@ local function delete_arg(args, key)
 	return new_args
 end
 
+local function pick_arg_with(args, str)
+	for _, v in ipairs(args) do
+		if string.find(v, str) then
+			return v
+		end
+	end
+end
+
 --- @param config DebugConfig
 M.pre_create = function(config)
 	local new_config = vim.deepcopy(config)
@@ -32,6 +40,12 @@ M.pre_create = function(config)
 			new_args = delete_arg(new_args, "--results-file")
 			new_args = delete_arg(new_args, "--stream-file")
 			new_config.dap_config["args"] = new_args
+
+			local test_target = pick_arg_with(new_args, "::")
+			local test_name = test_target and test_target:gsub(".*::", "") or nil
+			if test_name then
+				new_config.name = new_config.name .. "::" .. test_name
+			end
 		end
 	end
 	return new_config
