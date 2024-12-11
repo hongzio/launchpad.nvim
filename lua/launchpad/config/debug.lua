@@ -32,13 +32,14 @@ function DebugConfig:modify(callback)
 		height = 40,
 	})
 
+	local new_config = vim.deepcopy(self)
 	local is_submitted = false
 
 	renderer:on_unmount(function()
 		if not is_submitted then
 			callback(nil)
 		else
-			callback(self)
+			callback(new_config)
 		end
 	end)
 
@@ -61,23 +62,23 @@ function DebugConfig:modify(callback)
 				autoresize = false,
 				size = 1,
 				border_label = "Name",
-				value = self.name,
+				value = new_config.name,
 				validate = component.validator.min_length(1),
 				on_change = function(value)
-					self.name = value
+					new_config.name = value
 				end,
 			}),
 			component.text_input({
 				size = 15,
 				autoresize = true,
 				border_label = "Config",
-				value = util.beautify_json(vim.fn.json_encode(self.dap_config)),
+				value = util.beautify_json(vim.fn.json_encode(new_config.dap_config)),
 				validate = function(value)
 					local ok, decoded = pcall(vim.fn.json_decode, value)
 					if not ok then
 						return false
 					end
-					self.dap_config = decoded
+					new_config.dap_config = decoded
 					return ok
 				end,
 			}),
