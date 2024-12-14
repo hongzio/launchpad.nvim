@@ -1,5 +1,4 @@
 local M = {}
-local component = require("nui-components")
 local util = require("launchpad.util")
 
 --- @type table<string, ConfigEntity[]>
@@ -109,14 +108,13 @@ local function update_entity(entity)
 	end
 end
 
-local function on_select(entity)
-	vim.notify("Selected: " .. entity.config.name, vim.log.levels.INFO)
-	vim.schedule(function()
-		entity.config:run()
-		update_entity(entity)
-		M.save_configs()
-	end)
-end
+local actions = require("telescope.actions")
+local action_state = require("telescope.actions.state")
+local pickers = require("telescope.pickers")
+local finders = require("telescope.finders")
+local previewers = require("telescope.previewers")
+local themes = require("telescope.themes")
+local sorters = require("telescope.sorters")
 
 function M.show_configs(type)
 	local entities = type_to_cfg_entities[type]
@@ -127,139 +125,97 @@ function M.show_configs(type)
 
 	local items = {}
 	for _, entity in ipairs(entities) do
-		table.insert(items, component.option(entity.config.name, entity))
+		table.insert(items, {
+			display = entity.config.name,
+			value = entity,
+			ordinal = entity.config.name,
+		})
 	end
 
 	table.sort(items, function(a, b)
-		return a.config:sort_key() > b.config:sort_key()
+		return a.value.config:sort_key() > b.value.config:sort_key()
 	end)
 
-	local renderer = component.create_renderer({
-		width = 80,
-		height = 40,
-	})
+	local opts = themes.get_dropdown({})
 
-	local selected_signal = component.create_signal({
-		selected = items[1],
-	})
-
-	local detail_buf = vim.api.nvim_create_buf(false, true)
-	local detail = items[1].config:detail()
-	vim.api.nvim_buf_set_lines(detail_buf, 0, -1, false, detail)
-
-	local scroll_detail_buf = function(direction)
-		local winid = renderer:get_component_by_id("detail").winid
-		local input = direction < 0 and [[]] or [[]]
-		local count = math.abs(direction)
-
-		vim.api.nvim_win_call(winid, function()
-			vim.cmd([[normal! ]] .. count .. input)
-		end)
-	end
-
-	local body = function()
-		return component.columns(component.rows(
-			component.select({
-				flex = 2,
-				autofocus = true,
-				border_label = "Select a " .. type .. " configuration",
-				data = items,
-				selected = selected_signal.selected,
-				multiselect = false,
-				on_select = function(entity)
-					on_select(entity)
-					renderer:close()
-				end,
-				on_change = function(entity)
-					selected_signal.selected = entity
-					vim.api.nvim_buf_set_lines(detail_buf, 0, -1, false, entity.config:detail())
+	pickers
+		.new(opts, {
+			initial_mode = "normal",
+			prompt_title = "Select a " .. type .. " configuration",
+			preview_title = "<d> delete, <r> modify",
+			previewer = previewers.new_buffer_previewer({
+				define_preview = function(self, entry)
+					vim.api.nvim_set_option_value("wrap", true, { win = self.state.winid })
+					vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, false, entry.value.config:detail())
 				end,
 			}),
-			component.paragraph({
-				lines = "<d>: Delete an item. <r>: Modify an item. <Esc> or <q>: Close the menu.",
-				align = "right",
-				is_focusable = false,
+			sorter = sorters.fuzzy_with_index_bias(),
+			finder = finders.new_table({
+				results = items,
+				entry_maker = function(entry)
+					return {
+						value = entry.value,
+						display = entry.display,
+						ordinal = entry.ordinal,
+					}
+				end,
 			}),
-			component.buffer({
-				id = "detail",
-				flex = 1,
-				buf = detail_buf,
-				border_label = "Detail",
-				is_focusable = false,
-			}),
-			component.paragraph({
-				lines = "<C-d>: Scroll down. <C-u>: Scroll up.",
-				align = "right",
-				is_focusable = false,
-			})
-		))
-	end
-	renderer:add_mappings({
-		{
-			mode = { "n", "v" },
-			key = "q",
-			handler = function()
-				renderer:close()
-			end,
-		},
-		{
-			mode = { "n", "v" },
-			key = "<C-d>",
-			handler = function()
-				scroll_detail_buf(1)
-			end,
-		},
-		{
-			mode = { "n", "v" },
-			key = "<C-u>",
-			handler = function()
-				scroll_detail_buf(-1)
-			end,
-		},
-		{
-			mode = { "n", "v" },
-			key = "d",
-			handler = function()
-				local target_entity = selected_signal.selected:get_value()
-				local delete_target_idx = -1
-				for idx, entity in ipairs(entities) do
-					if entity.id == target_entity.id then
-						delete_target_idx = idx
-						break
+			attach_mappings = function(prompt_bufnr, map)
+				local on_select = function()
+					local selection = action_state.get_selected_entry()
+					actions.close(prompt_bufnr)
+					vim.notify("Selected: " .. selection.value.config.name, vim.log.levels.INFO)
+					vim.schedule(function()
+						selection.value.config:run()
+						update_entity(selection.value)
+						M.save_configs()
+					end)
+				end
+
+				local on_delete = function()
+					local selection = action_state.get_selected_entry()
+					actions.close(prompt_bufnr)
+					local delete_target_idx = -1
+					for idx, entity in ipairs(entities) do
+						if entity.id == selection.value.id then
+							delete_target_idx = idx
+							break
+						end
 					end
-				end
-				if delete_target_idx == -1 then
-					vim.notify("Config not found", vim.log.levels.ERROR)
-					return
-				end
-				table.remove(entities, delete_target_idx)
-				vim.notify("Deleted: " .. target_entity.config.name, vim.log.levels.INFO)
-				renderer:close()
-				M.show_configs(type)
-				M.save_configs()
-			end,
-		},
-		{
-			mode = { "n", "v" },
-			key = "r",
-			handler = function()
-				renderer:close()
-				local entity = selected_signal.selected:get_value()
-				entity.config:modify(function(config)
-					if config == nil then
-						M.show_configs(type)
+					if delete_target_idx == -1 then
+						vim.notify("Config not found", vim.log.levels.ERROR)
 						return
 					end
-					entity.config = config
-					update_entity(entity)
+					table.remove(entities, delete_target_idx)
+					vim.notify("Deleted: " .. selection.value.config.name, vim.log.levels.INFO)
 					M.show_configs(type)
-					vim.notify("Modified: " .. entity.config.name, vim.log.levels.INFO)
 					M.save_configs()
-				end)
+				end
+
+				local on_modify = function()
+					local selection = action_state.get_selected_entry()
+					actions.close(prompt_bufnr)
+					selection.value.config:modify(function(config)
+						if config == nil then
+							M.show_configs(type)
+							return
+						end
+						selection.value.config = config
+						update_entity(selection.value)
+						M.show_configs(type)
+						vim.notify("Modified: " .. selection.value.config.name, vim.log.levels.INFO)
+						M.save_configs()
+					end)
+				end
+
+				map("n", "d", on_delete)
+				map({ "i", "n" }, "<CR>", on_select)
+				map("n", "r", on_modify)
+
+				return true
 			end,
-		},
-	})
-	renderer:render(body)
+		})
+		:find()
 end
 
 return M
