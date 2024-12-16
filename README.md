@@ -30,7 +30,8 @@ automatically detect and save the configurations.
   dependencies = {
     "MunifTanjim/nui.nvim",
     "grapp-dev/nui-components.nvim",
-    "mfussenegger/nvim-dap"
+    "mfussenegger/nvim-dap",
+    "nvim-telescope/telescope.nvim"
   },
   opts = {},
   keys = {
