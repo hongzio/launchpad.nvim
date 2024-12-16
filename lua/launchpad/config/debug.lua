@@ -6,13 +6,13 @@ local util = require("launchpad.util")
 --- @field last_run_time number
 DebugConfig = {}
 
---- @param obj { name: string, dap_config: dap.Configuration }
+--- @param obj { name: string, dap_config: dap.Configuration, last_run_time: number? }
 --- @return DebugConfig
 function DebugConfig.new(obj)
 	local self = setmetatable({}, { __index = DebugConfig })
 	self.name = obj.name
 	self.dap_config = obj.dap_config
-	self.last_run_time = os.time()
+	self.last_run_time = obj.last_run_time or os.time()
 	return self
 end
 
