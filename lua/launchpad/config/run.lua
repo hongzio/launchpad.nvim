@@ -13,7 +13,7 @@ local options = {}
 --- @field last_run_time number
 RunConfig = {}
 
---- @param config? table<string, any>
+--- @param config table<string, any>?
 --- @return RunConfig
 function RunConfig.new(config)
 	local self = {
